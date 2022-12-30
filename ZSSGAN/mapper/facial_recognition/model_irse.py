@@ -35,10 +35,10 @@ class Backbone(Module):
 
 		modules = []
 		for block in blocks:
-			for bottleneck in block:
-				modules.append(unit_module(bottleneck.in_channel,
-										   bottleneck.depth,
-										   bottleneck.stride))
+			modules.extend(
+				unit_module(bottleneck.in_channel, bottleneck.depth, bottleneck.stride)
+				for bottleneck in block
+			)
 		self.body = Sequential(*modules)
 
 	def forward(self, x):
@@ -50,35 +50,41 @@ class Backbone(Module):
 
 def IR_50(input_size):
 	"""Constructs a ir-50 model."""
-	model = Backbone(input_size, num_layers=50, mode='ir', drop_ratio=0.4, affine=False)
-	return model
+	return Backbone(
+		input_size, num_layers=50, mode='ir', drop_ratio=0.4, affine=False
+	)
 
 
 def IR_101(input_size):
 	"""Constructs a ir-101 model."""
-	model = Backbone(input_size, num_layers=100, mode='ir', drop_ratio=0.4, affine=False)
-	return model
+	return Backbone(
+		input_size, num_layers=100, mode='ir', drop_ratio=0.4, affine=False
+	)
 
 
 def IR_152(input_size):
 	"""Constructs a ir-152 model."""
-	model = Backbone(input_size, num_layers=152, mode='ir', drop_ratio=0.4, affine=False)
-	return model
+	return Backbone(
+		input_size, num_layers=152, mode='ir', drop_ratio=0.4, affine=False
+	)
 
 
 def IR_SE_50(input_size):
 	"""Constructs a ir_se-50 model."""
-	model = Backbone(input_size, num_layers=50, mode='ir_se', drop_ratio=0.4, affine=False)
-	return model
+	return Backbone(
+		input_size, num_layers=50, mode='ir_se', drop_ratio=0.4, affine=False
+	)
 
 
 def IR_SE_101(input_size):
 	"""Constructs a ir_se-101 model."""
-	model = Backbone(input_size, num_layers=100, mode='ir_se', drop_ratio=0.4, affine=False)
-	return model
+	return Backbone(
+		input_size, num_layers=100, mode='ir_se', drop_ratio=0.4, affine=False
+	)
 
 
 def IR_SE_152(input_size):
 	"""Constructs a ir_se-152 model."""
-	model = Backbone(input_size, num_layers=152, mode='ir_se', drop_ratio=0.4, affine=False)
-	return model
+	return Backbone(
+		input_size, num_layers=152, mode='ir_se', drop_ratio=0.4, affine=False
+	)

@@ -13,6 +13,7 @@ during unpickling. This way, any previously exported pickles will remain
 usable even if the original code is no longer available, or if the current
 version of the code is not consistent with what was originally pickled."""
 
+
 import sys
 import pickle
 import io
@@ -27,8 +28,8 @@ import dnnlib
 _version            = 6         # internal version number
 _decorators         = set()     # {decorator_class, ...}
 _import_hooks       = []        # [hook_function, ...]
-_module_to_src_dict = dict()    # {module: src, ...}
-_src_to_module_dict = dict()    # {src: module, ...}
+_module_to_src_dict = {}
+_src_to_module_dict = {}
 
 #----------------------------------------------------------------------------
 
@@ -218,7 +219,7 @@ def _src_to_module(src):
     """
     module = _src_to_module_dict.get(src, None)
     if module is None:
-        module_name = "_imported_module_" + uuid.uuid4().hex
+        module_name = f"_imported_module_{uuid.uuid4().hex}"
         module = types.ModuleType(module_name)
         sys.modules[module_name] = module
         _module_to_src_dict[module] = src
@@ -242,9 +243,8 @@ def _check_pickleable(obj):
             return None # Python primitive types are pickleable.
         if f'{type(obj).__module__}.{type(obj).__name__}' in ['numpy.ndarray', 'torch.Tensor', 'torch.nn.parameter.Parameter']:
             return None # NumPy arrays and PyTorch tensors are pickleable.
-        if is_persistent(obj):
-            return None # Persistent objects are pickleable, by virtue of the constructor check.
-        return obj
+        return None if is_persistent(obj) else obj
+
     with io.BytesIO() as f:
         pickle.dump(recurse(obj), f)
 

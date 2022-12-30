@@ -205,10 +205,21 @@ class CLIPLoss(torch.nn.Module):
         batch_size, channels, height, width = img_shape
 
         half_size = size // 2
-        patch_centers = np.concatenate([np.random.randint(half_size, width - half_size,  size=(batch_size * num_patches, 1)),
-                                        np.random.randint(half_size, height - half_size, size=(batch_size * num_patches, 1))], axis=1)
-
-        return patch_centers
+        return np.concatenate(
+            [
+                np.random.randint(
+                    half_size,
+                    width - half_size,
+                    size=(batch_size * num_patches, 1),
+                ),
+                np.random.randint(
+                    half_size,
+                    height - half_size,
+                    size=(batch_size * num_patches, 1),
+                ),
+            ],
+            axis=1,
+        )
 
     def generate_patches(self, img: torch.Tensor, patch_centers, size):
         batch_size  = img.shape[0]
@@ -227,22 +238,18 @@ class CLIPLoss(torch.nn.Module):
 
                 patches.append(patch)
 
-        patches = torch.cat(patches, axis=0)
-
-        return patches
+        return torch.cat(patches, axis=0)
 
     def patch_scores(self, img: torch.Tensor, class_str: str, patch_centers, patch_size: int) -> torch.Tensor:
 
-        parts = self.compose_text_with_templates(class_str, part_templates)    
+        parts = self.compose_text_with_templates(class_str, part_templates)
         tokens = clip.tokenize(parts).to(self.device)
         text_features = self.encode_text(tokens).detach()
 
         patches        = self.generate_patches(img, patch_centers, patch_size)
         image_features = self.get_image_features(patches)
 
-        similarity = image_features @ text_features.T
-
-        return similarity
+        return image_features @ text_features.T
 
     def clip_patch_similarity(self, src_img: torch.Tensor, source_class: str, target_img: torch.Tensor, target_class: str) -> torch.Tensor:
         patch_size = 196 #TODO remove magic number

@@ -70,20 +70,19 @@ class _LegacyUnpickler(pickle.Unpickler):
             return _TFNetworkStub
         if module == 'torch.storage' and name == '_load_from_bytes':
             return lambda b: torch.load(io.BytesIO(b), map_location='cpu')
-        if module == 'torch.storage' and name == '_load_from_bytes':
-            return lambda b: torch.load(io.BytesIO(b), map_location='cpu')
         return super().find_class(module, name)
 
 #----------------------------------------------------------------------------
 
 def _collect_tf_params(tf_net):
     # pylint: disable=protected-access
-    tf_params = dict()
+    tf_params = {}
     def recurse(prefix, tf_net):
         for name, value in tf_net.variables:
             tf_params[prefix + name] = value
         for name, comp in tf_net.components.items():
             recurse(prefix + name + '/', comp)
+
     recurse('', tf_net)
     return tf_params
 
@@ -93,9 +92,8 @@ def _populate_module_params(module, *patterns):
     for name, tensor in misc.named_params_and_buffers(module):
         found = False
         value = None
-        for pattern, value_fn in zip(patterns[0::2], patterns[1::2]):
-            match = re.fullmatch(pattern, name)
-            if match:
+        for pattern, value_fn in zip(patterns[::2], patterns[1::2]):
+            if match := re.fullmatch(pattern, name):
                 found = True
                 if value_fn is not None:
                     value = value_fn(*match.groups())
@@ -157,7 +155,7 @@ def convert_tf_generator(tf_G):
     kwarg('conditioning')
     kwarg('fused_modconv')
     unknown_kwargs = list(set(tf_kwargs.keys()) - known_kwargs)
-    if len(unknown_kwargs) > 0:
+    if unknown_kwargs:
         raise ValueError('Unknown TensorFlow kwarg', unknown_kwargs[0])
 
     # Collect params.
@@ -165,8 +163,8 @@ def convert_tf_generator(tf_G):
     for name, value in list(tf_params.items()):
         match = re.fullmatch(r'ToRGB_lod(\d+)/(.*)', name)
         if match:
-            r = kwargs.img_resolution // (2 ** int(match.group(1)))
-            tf_params[f'{r}x{r}/ToRGB/{match.group(2)}'] = value
+            r = kwargs.img_resolution // 2**int(match[1])
+            tf_params[f'{r}x{r}/ToRGB/{match[2]}'] = value
             kwargs.synthesis.kwargs.architecture = 'orig'
     #for name, value in tf_params.items(): print(f'{name:<50s}{list(value.shape)}')
 
@@ -174,38 +172,84 @@ def convert_tf_generator(tf_G):
     G = network_class(**kwargs).eval().requires_grad_(False)
     # pylint: disable=unnecessary-lambda
     # pylint: disable=f-string-without-interpolation
-    _populate_module_params(G,
-        r'mapping\.w_avg',                                  lambda:     tf_params[f'dlatent_avg'],
-        r'mapping\.embed\.weight',                          lambda:     tf_params[f'mapping/LabelEmbed/weight'].transpose(),
-        r'mapping\.embed\.bias',                            lambda:     tf_params[f'mapping/LabelEmbed/bias'],
-        r'mapping\.fc(\d+)\.weight',                        lambda i:   tf_params[f'mapping/Dense{i}/weight'].transpose(),
-        r'mapping\.fc(\d+)\.bias',                          lambda i:   tf_params[f'mapping/Dense{i}/bias'],
-        r'synthesis\.b4\.const',                            lambda:     tf_params[f'synthesis/4x4/Const/const'][0],
-        r'synthesis\.b4\.conv1\.weight',                    lambda:     tf_params[f'synthesis/4x4/Conv/weight'].transpose(3, 2, 0, 1),
-        r'synthesis\.b4\.conv1\.bias',                      lambda:     tf_params[f'synthesis/4x4/Conv/bias'],
-        r'synthesis\.b4\.conv1\.noise_const',               lambda:     tf_params[f'synthesis/noise0'][0, 0],
-        r'synthesis\.b4\.conv1\.noise_strength',            lambda:     tf_params[f'synthesis/4x4/Conv/noise_strength'],
-        r'synthesis\.b4\.conv1\.affine\.weight',            lambda:     tf_params[f'synthesis/4x4/Conv/mod_weight'].transpose(),
-        r'synthesis\.b4\.conv1\.affine\.bias',              lambda:     tf_params[f'synthesis/4x4/Conv/mod_bias'] + 1,
-        r'synthesis\.b(\d+)\.conv0\.weight',                lambda r:   tf_params[f'synthesis/{r}x{r}/Conv0_up/weight'][::-1, ::-1].transpose(3, 2, 0, 1),
-        r'synthesis\.b(\d+)\.conv0\.bias',                  lambda r:   tf_params[f'synthesis/{r}x{r}/Conv0_up/bias'],
-        r'synthesis\.b(\d+)\.conv0\.noise_const',           lambda r:   tf_params[f'synthesis/noise{int(np.log2(int(r)))*2-5}'][0, 0],
-        r'synthesis\.b(\d+)\.conv0\.noise_strength',        lambda r:   tf_params[f'synthesis/{r}x{r}/Conv0_up/noise_strength'],
-        r'synthesis\.b(\d+)\.conv0\.affine\.weight',        lambda r:   tf_params[f'synthesis/{r}x{r}/Conv0_up/mod_weight'].transpose(),
-        r'synthesis\.b(\d+)\.conv0\.affine\.bias',          lambda r:   tf_params[f'synthesis/{r}x{r}/Conv0_up/mod_bias'] + 1,
-        r'synthesis\.b(\d+)\.conv1\.weight',                lambda r:   tf_params[f'synthesis/{r}x{r}/Conv1/weight'].transpose(3, 2, 0, 1),
-        r'synthesis\.b(\d+)\.conv1\.bias',                  lambda r:   tf_params[f'synthesis/{r}x{r}/Conv1/bias'],
-        r'synthesis\.b(\d+)\.conv1\.noise_const',           lambda r:   tf_params[f'synthesis/noise{int(np.log2(int(r)))*2-4}'][0, 0],
-        r'synthesis\.b(\d+)\.conv1\.noise_strength',        lambda r:   tf_params[f'synthesis/{r}x{r}/Conv1/noise_strength'],
-        r'synthesis\.b(\d+)\.conv1\.affine\.weight',        lambda r:   tf_params[f'synthesis/{r}x{r}/Conv1/mod_weight'].transpose(),
-        r'synthesis\.b(\d+)\.conv1\.affine\.bias',          lambda r:   tf_params[f'synthesis/{r}x{r}/Conv1/mod_bias'] + 1,
-        r'synthesis\.b(\d+)\.torgb\.weight',                lambda r:   tf_params[f'synthesis/{r}x{r}/ToRGB/weight'].transpose(3, 2, 0, 1),
-        r'synthesis\.b(\d+)\.torgb\.bias',                  lambda r:   tf_params[f'synthesis/{r}x{r}/ToRGB/bias'],
-        r'synthesis\.b(\d+)\.torgb\.affine\.weight',        lambda r:   tf_params[f'synthesis/{r}x{r}/ToRGB/mod_weight'].transpose(),
-        r'synthesis\.b(\d+)\.torgb\.affine\.bias',          lambda r:   tf_params[f'synthesis/{r}x{r}/ToRGB/mod_bias'] + 1,
-        r'synthesis\.b(\d+)\.skip\.weight',                 lambda r:   tf_params[f'synthesis/{r}x{r}/Skip/weight'][::-1, ::-1].transpose(3, 2, 0, 1),
-        r'.*\.resample_filter',                             None,
-        r'.*\.act_filter',                                  None,
+    _populate_module_params(
+        G,
+        r'mapping\.w_avg',
+        lambda: tf_params['dlatent_avg'],
+        r'mapping\.embed\.weight',
+        lambda: tf_params['mapping/LabelEmbed/weight'].transpose(),
+        r'mapping\.embed\.bias',
+        lambda: tf_params['mapping/LabelEmbed/bias'],
+        r'mapping\.fc(\d+)\.weight',
+        lambda i: tf_params[f'mapping/Dense{i}/weight'].transpose(),
+        r'mapping\.fc(\d+)\.bias',
+        lambda i: tf_params[f'mapping/Dense{i}/bias'],
+        r'synthesis\.b4\.const',
+        lambda: tf_params['synthesis/4x4/Const/const'][0],
+        r'synthesis\.b4\.conv1\.weight',
+        lambda: tf_params['synthesis/4x4/Conv/weight'].transpose(3, 2, 0, 1),
+        r'synthesis\.b4\.conv1\.bias',
+        lambda: tf_params['synthesis/4x4/Conv/bias'],
+        r'synthesis\.b4\.conv1\.noise_const',
+        lambda: tf_params['synthesis/noise0'][0, 0],
+        r'synthesis\.b4\.conv1\.noise_strength',
+        lambda: tf_params['synthesis/4x4/Conv/noise_strength'],
+        r'synthesis\.b4\.conv1\.affine\.weight',
+        lambda: tf_params['synthesis/4x4/Conv/mod_weight'].transpose(),
+        r'synthesis\.b4\.conv1\.affine\.bias',
+        lambda: tf_params['synthesis/4x4/Conv/mod_bias'] + 1,
+        r'synthesis\.b(\d+)\.conv0\.weight',
+        lambda r: tf_params[f'synthesis/{r}x{r}/Conv0_up/weight'][
+            ::-1, ::-1
+        ].transpose(3, 2, 0, 1),
+        r'synthesis\.b(\d+)\.conv0\.bias',
+        lambda r: tf_params[f'synthesis/{r}x{r}/Conv0_up/bias'],
+        r'synthesis\.b(\d+)\.conv0\.noise_const',
+        lambda r: tf_params[f'synthesis/noise{int(np.log2(int(r)))*2-5}'][
+            0, 0
+        ],
+        r'synthesis\.b(\d+)\.conv0\.noise_strength',
+        lambda r: tf_params[f'synthesis/{r}x{r}/Conv0_up/noise_strength'],
+        r'synthesis\.b(\d+)\.conv0\.affine\.weight',
+        lambda r: tf_params[
+            f'synthesis/{r}x{r}/Conv0_up/mod_weight'
+        ].transpose(),
+        r'synthesis\.b(\d+)\.conv0\.affine\.bias',
+        lambda r: tf_params[f'synthesis/{r}x{r}/Conv0_up/mod_bias'] + 1,
+        r'synthesis\.b(\d+)\.conv1\.weight',
+        lambda r: tf_params[f'synthesis/{r}x{r}/Conv1/weight'].transpose(
+            3, 2, 0, 1
+        ),
+        r'synthesis\.b(\d+)\.conv1\.bias',
+        lambda r: tf_params[f'synthesis/{r}x{r}/Conv1/bias'],
+        r'synthesis\.b(\d+)\.conv1\.noise_const',
+        lambda r: tf_params[f'synthesis/noise{int(np.log2(int(r)))*2-4}'][
+            0, 0
+        ],
+        r'synthesis\.b(\d+)\.conv1\.noise_strength',
+        lambda r: tf_params[f'synthesis/{r}x{r}/Conv1/noise_strength'],
+        r'synthesis\.b(\d+)\.conv1\.affine\.weight',
+        lambda r: tf_params[f'synthesis/{r}x{r}/Conv1/mod_weight'].transpose(),
+        r'synthesis\.b(\d+)\.conv1\.affine\.bias',
+        lambda r: tf_params[f'synthesis/{r}x{r}/Conv1/mod_bias'] + 1,
+        r'synthesis\.b(\d+)\.torgb\.weight',
+        lambda r: tf_params[f'synthesis/{r}x{r}/ToRGB/weight'].transpose(
+            3, 2, 0, 1
+        ),
+        r'synthesis\.b(\d+)\.torgb\.bias',
+        lambda r: tf_params[f'synthesis/{r}x{r}/ToRGB/bias'],
+        r'synthesis\.b(\d+)\.torgb\.affine\.weight',
+        lambda r: tf_params[f'synthesis/{r}x{r}/ToRGB/mod_weight'].transpose(),
+        r'synthesis\.b(\d+)\.torgb\.affine\.bias',
+        lambda r: tf_params[f'synthesis/{r}x{r}/ToRGB/mod_bias'] + 1,
+        r'synthesis\.b(\d+)\.skip\.weight',
+        lambda r: tf_params[f'synthesis/{r}x{r}/Skip/weight'][
+            ::-1, ::-1
+        ].transpose(3, 2, 0, 1),
+        r'.*\.resample_filter',
+        None,
+        r'.*\.act_filter',
+        None,
     )
     return G
 
@@ -256,7 +300,7 @@ def convert_tf_discriminator(tf_D):
     kwarg('structure')
     kwarg('conditioning')
     unknown_kwargs = list(set(tf_kwargs.keys()) - known_kwargs)
-    if len(unknown_kwargs) > 0:
+    if unknown_kwargs:
         raise ValueError('Unknown TensorFlow kwarg', unknown_kwargs[0])
 
     # Collect params.
@@ -264,8 +308,8 @@ def convert_tf_discriminator(tf_D):
     for name, value in list(tf_params.items()):
         match = re.fullmatch(r'FromRGB_lod(\d+)/(.*)', name)
         if match:
-            r = kwargs.img_resolution // (2 ** int(match.group(1)))
-            tf_params[f'{r}x{r}/FromRGB/{match.group(2)}'] = value
+            r = kwargs.img_resolution // 2**int(match[1])
+            tf_params[f'{r}x{r}/FromRGB/{match[2]}'] = value
             kwargs.architecture = 'orig'
     #for name, value in tf_params.items(): print(f'{name:<50s}{list(value.shape)}')
 
@@ -274,23 +318,42 @@ def convert_tf_discriminator(tf_D):
     D = networks_stylegan2.Discriminator(**kwargs).eval().requires_grad_(False)
     # pylint: disable=unnecessary-lambda
     # pylint: disable=f-string-without-interpolation
-    _populate_module_params(D,
-        r'b(\d+)\.fromrgb\.weight',     lambda r:       tf_params[f'{r}x{r}/FromRGB/weight'].transpose(3, 2, 0, 1),
-        r'b(\d+)\.fromrgb\.bias',       lambda r:       tf_params[f'{r}x{r}/FromRGB/bias'],
-        r'b(\d+)\.conv(\d+)\.weight',   lambda r, i:    tf_params[f'{r}x{r}/Conv{i}{["","_down"][int(i)]}/weight'].transpose(3, 2, 0, 1),
-        r'b(\d+)\.conv(\d+)\.bias',     lambda r, i:    tf_params[f'{r}x{r}/Conv{i}{["","_down"][int(i)]}/bias'],
-        r'b(\d+)\.skip\.weight',        lambda r:       tf_params[f'{r}x{r}/Skip/weight'].transpose(3, 2, 0, 1),
-        r'mapping\.embed\.weight',      lambda:         tf_params[f'LabelEmbed/weight'].transpose(),
-        r'mapping\.embed\.bias',        lambda:         tf_params[f'LabelEmbed/bias'],
-        r'mapping\.fc(\d+)\.weight',    lambda i:       tf_params[f'Mapping{i}/weight'].transpose(),
-        r'mapping\.fc(\d+)\.bias',      lambda i:       tf_params[f'Mapping{i}/bias'],
-        r'b4\.conv\.weight',            lambda:         tf_params[f'4x4/Conv/weight'].transpose(3, 2, 0, 1),
-        r'b4\.conv\.bias',              lambda:         tf_params[f'4x4/Conv/bias'],
-        r'b4\.fc\.weight',              lambda:         tf_params[f'4x4/Dense0/weight'].transpose(),
-        r'b4\.fc\.bias',                lambda:         tf_params[f'4x4/Dense0/bias'],
-        r'b4\.out\.weight',             lambda:         tf_params[f'Output/weight'].transpose(),
-        r'b4\.out\.bias',               lambda:         tf_params[f'Output/bias'],
-        r'.*\.resample_filter',         None,
+    _populate_module_params(
+        D,
+        r'b(\d+)\.fromrgb\.weight',
+        lambda r: tf_params[f'{r}x{r}/FromRGB/weight'].transpose(3, 2, 0, 1),
+        r'b(\d+)\.fromrgb\.bias',
+        lambda r: tf_params[f'{r}x{r}/FromRGB/bias'],
+        r'b(\d+)\.conv(\d+)\.weight',
+        lambda r, i: tf_params[
+            f'{r}x{r}/Conv{i}{["","_down"][int(i)]}/weight'
+        ].transpose(3, 2, 0, 1),
+        r'b(\d+)\.conv(\d+)\.bias',
+        lambda r, i: tf_params[f'{r}x{r}/Conv{i}{["","_down"][int(i)]}/bias'],
+        r'b(\d+)\.skip\.weight',
+        lambda r: tf_params[f'{r}x{r}/Skip/weight'].transpose(3, 2, 0, 1),
+        r'mapping\.embed\.weight',
+        lambda: tf_params['LabelEmbed/weight'].transpose(),
+        r'mapping\.embed\.bias',
+        lambda: tf_params['LabelEmbed/bias'],
+        r'mapping\.fc(\d+)\.weight',
+        lambda i: tf_params[f'Mapping{i}/weight'].transpose(),
+        r'mapping\.fc(\d+)\.bias',
+        lambda i: tf_params[f'Mapping{i}/bias'],
+        r'b4\.conv\.weight',
+        lambda: tf_params['4x4/Conv/weight'].transpose(3, 2, 0, 1),
+        r'b4\.conv\.bias',
+        lambda: tf_params['4x4/Conv/bias'],
+        r'b4\.fc\.weight',
+        lambda: tf_params['4x4/Dense0/weight'].transpose(),
+        r'b4\.fc\.bias',
+        lambda: tf_params['4x4/Dense0/bias'],
+        r'b4\.out\.weight',
+        lambda: tf_params['Output/weight'].transpose(),
+        r'b4\.out\.bias',
+        lambda: tf_params['Output/bias'],
+        r'.*\.resample_filter',
+        None,
     )
     return D
 

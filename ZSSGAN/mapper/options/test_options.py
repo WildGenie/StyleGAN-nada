@@ -27,5 +27,4 @@ class TestOptions:
 		self.parser.add_argument('--n_images', type=int, default=None, help='Number of images to output. If None, run on all data')
 
 	def parse(self):
-		opts = self.parser.parse_args()
-		return opts
+		return self.parser.parse_args()

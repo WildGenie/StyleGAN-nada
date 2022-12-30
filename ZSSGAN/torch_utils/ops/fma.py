@@ -29,19 +29,9 @@ class _FusedMultiplyAdd(torch.autograd.Function): # a * b + c
     def backward(ctx, dout): # pylint: disable=arguments-differ
         a, b = ctx.saved_tensors
         c_shape = ctx.c_shape
-        da = None
-        db = None
-        dc = None
-
-        if ctx.needs_input_grad[0]:
-            da = _unbroadcast(dout * b, a.shape)
-
-        if ctx.needs_input_grad[1]:
-            db = _unbroadcast(dout * a, b.shape)
-
-        if ctx.needs_input_grad[2]:
-            dc = _unbroadcast(dout, c_shape)
-
+        da = _unbroadcast(dout * b, a.shape) if ctx.needs_input_grad[0] else None
+        db = _unbroadcast(dout * a, b.shape) if ctx.needs_input_grad[1] else None
+        dc = _unbroadcast(dout, c_shape) if ctx.needs_input_grad[2] else None
         return da, db, dc
 
 #----------------------------------------------------------------------------

@@ -17,8 +17,9 @@ class CLIPLoss(torch.nn.Module):
 
     def forward(self, image, text):
         image = self.avg_pool(self.upsample(image))
-        similarity = 1.0 * (1 - self.model(image, text)[0] / 100) + 1.0 * (1.0 - self.model_16(image, text)[0] / 100)
-        return similarity
+        return 1.0 * (1 - self.model(image, text)[0] / 100) + 1.0 * (
+            1.0 - self.model_16(image, text)[0] / 100
+        )
 
     def norm_loss(self, image_pre, image_post):
         norm_pre = self.model.encode_image(self.avg_pool(self.upsample(image_pre))).norm(dim=-1)

@@ -69,7 +69,7 @@ class Coach:
 	def train(self):
 		self.net.train()
 		while self.global_step < self.opts.max_steps:
-			for batch_idx, batch in enumerate(self.train_dataloader):
+			for batch in self.train_dataloader:
 				self.optimizer.zero_grad()
 				w = batch
 				w = w.to(self.device)
@@ -142,7 +142,7 @@ class Coach:
 		return loss_dict
 
 	def checkpoint_me(self, loss_dict, is_best):
-		save_name = 'best_model.pt' if is_best else 'iteration_{}.pt'.format(self.global_step)
+		save_name = 'best_model.pt' if is_best else f'iteration_{self.global_step}.pt'
 		save_dict = self.__get_save_dict()
 		checkpoint_path = os.path.join(self.checkpoint_dir, save_name)
 		torch.save(save_dict, checkpoint_path)
@@ -150,15 +150,15 @@ class Coach:
 			if is_best:
 				f.write('**Best**: Step - {}, Loss - {:.3f} \n{}\n'.format(self.global_step, self.best_val_loss, loss_dict))
 			else:
-				f.write('Step - {}, \n{}\n'.format(self.global_step, loss_dict))
+				f.write(f'Step - {self.global_step}, \n{loss_dict}\n')
 
 	def configure_optimizers(self):
 		params = list(self.net.mapper.parameters())
-		if self.opts.optim_name == 'adam':
-			optimizer = torch.optim.Adam(params, lr=self.opts.learning_rate)
-		else:
-			optimizer = Ranger(params, lr=self.opts.learning_rate)
-		return optimizer
+		return (
+			torch.optim.Adam(params, lr=self.opts.learning_rate)
+			if self.opts.optim_name == 'adam'
+			else Ranger(params, lr=self.opts.learning_rate)
+		)
 
 	def configure_datasets(self):
 		if self.opts.latents_train_path:
@@ -191,8 +191,8 @@ class Coach:
 		                                      opts=self.opts)
 		train_dataset = train_dataset_celeba
 		test_dataset = test_dataset_celeba
-		print("Number of training samples: {}".format(len(train_dataset)))
-		print("Number of test samples: {}".format(len(test_dataset)))
+		print(f"Number of training samples: {len(train_dataset)}")
+		print(f"Number of test samples: {len(test_dataset)}")
 		return train_dataset, test_dataset
 
 	def calc_loss(self, w, x, w_hat, x_hat):
@@ -215,20 +215,20 @@ class Coach:
 			loss_norm = self.clip_loss.norm_loss(x, x_hat)
 			loss_dict['loss_norm'] = float(loss_norm)
 			loss += loss_norm * self.opts.norm_lambda
-			
-		loss_dict['loss'] = float(loss)
+
+		loss_dict['loss'] = loss
 		return loss, loss_dict
 
 	def log_metrics(self, metrics_dict, prefix):
 		for key, value in metrics_dict.items():
 			#pass
 			print(f"step: {self.global_step} \t metric: {prefix}/{key} \t value: {value}")
-			self.logger.add_scalar('{}/{}'.format(prefix, key), value, self.global_step)
+			self.logger.add_scalar(f'{prefix}/{key}', value, self.global_step)
 
 	def print_metrics(self, metrics_dict, prefix):
-		print('Metrics for {}, step {}'.format(prefix, self.global_step))
+		print(f'Metrics for {prefix}, step {self.global_step}')
 		for key, value in metrics_dict.items():
-			print('\t{} = '.format(key), value)
+			print(f'\t{key} = ', value)
 
 	def parse_and_log_images(self, x, x_hat, title, index=None):
 		if index is None:
@@ -240,8 +240,4 @@ class Coach:
 									 normalize=True, scale_each=True, range=(-1, 1), nrow=self.opts.batch_size)
 
 	def __get_save_dict(self):
-		save_dict = {
-			'state_dict': self.net.state_dict(),
-			'opts': vars(self.opts)
-		}
-		return save_dict
+		return {'state_dict': self.net.state_dict(), 'opts': vars(self.opts)}

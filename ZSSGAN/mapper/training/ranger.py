@@ -38,11 +38,11 @@ class Ranger(Optimizer):
 		# parameter checks
 		if not 0.0 <= alpha <= 1.0:
 			raise ValueError(f'Invalid slow update rate: {alpha}')
-		if not 1 <= k:
+		if k < 1:
 			raise ValueError(f'Invalid lookahead steps: {k}')
-		if not lr > 0:
+		if lr <= 0:
 			raise ValueError(f'Invalid Learning Rate: {lr}')
-		if not eps > 0:
+		if eps <= 0:
 			raise ValueError(f'Invalid eps: {eps}')
 
 		# parameter comments:
@@ -64,7 +64,7 @@ class Ranger(Optimizer):
 		self.k = k
 
 		# radam buffer for state
-		self.radam_buffer = [[None, None, None] for ind in range(10)]
+		self.radam_buffer = [[None, None, None] for _ in range(10)]
 
 		# gc on or off
 		self.use_gc = use_gc
@@ -76,8 +76,6 @@ class Ranger(Optimizer):
 		super(Ranger, self).__setstate__(state)
 
 	def step(self, closure=None):
-		loss = None
-
 		# Evaluate averages and grad, update param tensors
 		for group in self.param_groups:
 
@@ -161,4 +159,4 @@ class Ranger(Optimizer):
 					slow_p.add_(self.alpha, p.data - slow_p)  # (fast weights - slow weights) * alpha
 					p.data.copy_(slow_p)  # copy interpolated weights to RAdam param tensor
 
-		return loss
+		return None

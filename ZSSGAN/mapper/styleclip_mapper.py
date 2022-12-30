@@ -7,8 +7,7 @@ from mapper.stylegan2.model import Generator
 def get_keys(d, name):
 	if 'state_dict' in d:
 		d = d['state_dict']
-	d_filt = {k[len(name) + 1:]: v for k, v in d.items() if k[:len(name)] == name}
-	return d_filt
+	return {k[len(name) + 1:]: v for k, v in d.items() if k[:len(name)] == name}
 
 
 class StyleCLIPMapper(nn.Module):
@@ -33,12 +32,12 @@ class StyleCLIPMapper(nn.Module):
 		elif self.opts.mapper_type == 'LevelsMapper':
 			mapper = latent_mappers.LevelsMapper(self.opts)
 		else:
-			raise Exception('{} is not a valid mapper'.format(self.opts.mapper_type))
+			raise Exception(f'{self.opts.mapper_type} is not a valid mapper')
 		return mapper
 
 	def load_weights(self):
 		if self.opts.checkpoint_path is not None:
-			print('Loading from checkpoint: {}'.format(self.opts.checkpoint_path))
+			print(f'Loading from checkpoint: {self.opts.checkpoint_path}')
 			ckpt = torch.load(self.opts.checkpoint_path, map_location='cpu')
 			self.mapper.load_state_dict(get_keys(ckpt, 'mapper'), strict=True)
 			self.decoder.load_state_dict(get_keys(ckpt, 'decoder'), strict=True)
@@ -49,21 +48,16 @@ class StyleCLIPMapper(nn.Module):
 
 	def forward(self, x, resize=True, latent_mask=None, input_code=False, randomize_noise=True,
 	            inject_latent=None, return_latents=False, alpha=None):
-		if input_code:
-			codes = x
-		else:
-			codes = self.mapper(x)
-
+		codes = x if input_code else self.mapper(x)
 		if latent_mask is not None:
 			for i in latent_mask:
-				if inject_latent is not None:
-					if alpha is not None:
-						codes[:, i] = alpha * inject_latent[:, i] + (1 - alpha) * codes[:, i]
-					else:
-						codes[:, i] = inject_latent[:, i]
-				else:
+				if inject_latent is None:
 					codes[:, i] = 0
 
+				elif alpha is not None:
+					codes[:, i] = alpha * inject_latent[:, i] + (1 - alpha) * codes[:, i]
+				else:
+					codes[:, i] = inject_latent[:, i]
 		input_is_latent = not input_code
 		images, result_latent = self.decoder([codes],
 		                                     input_is_latent=input_is_latent,
@@ -73,7 +67,4 @@ class StyleCLIPMapper(nn.Module):
 		if resize:
 			images = self.face_pool(images)
 
-		if return_latents:
-			return images, result_latent
-		else:
-			return images
+		return (images, result_latent) if return_latents else images

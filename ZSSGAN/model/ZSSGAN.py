@@ -144,16 +144,16 @@ class SG2Generator(torch.nn.Module):
 
         if phase == 'texture':
             # learned constant + first convolution + layers 3-10
-            return list(self.get_all_layers())[1:3] + list(self.get_all_layers()[4][2:10])   
+            return list(self.get_all_layers())[1:3] + list(self.get_all_layers()[4][2:10])
         if phase == 'shape':
             # layers 1-2
-             return list(self.get_all_layers())[1:3] + list(self.get_all_layers()[4][0:2])
+            return list(self.get_all_layers())[1:3] + list(self.get_all_layers()[4][:2])
         if phase == 'no_fine':
             # const + layers 1-10
              return list(self.get_all_layers())[1:3] + list(self.get_all_layers()[4][:10])
         if phase == 'shape_expanded':
             # const + layers 1-10
-             return list(self.get_all_layers())[1:3] + list(self.get_all_layers()[4][0:3])
+            return list(self.get_all_layers())[1:3] + list(self.get_all_layers()[4][:3])
         if phase == 'all':
             # everything, including mapping and ToRGB
             return self.get_all_layers() 
@@ -277,7 +277,7 @@ class ZSSGAN(torch.nn.Module):
         # freeze relevant layers
         self.generator_frozen.freeze_layers()
         self.generator_frozen.eval()
-        
+
         self.generator_trainable.freeze_layers()
         self.generator_trainable.unfreeze_layers(self.generator_trainable.get_training_layers(args.phase))
         self.generator_trainable.train()
@@ -292,7 +292,7 @@ class ZSSGAN(torch.nn.Module):
                                                       clip_model=model_name) 
                                 for model_name in args.clip_models}
 
-        self.clip_model_weights = {model_name: weight for model_name, weight in zip(args.clip_models, args.clip_model_weights)}
+        self.clip_model_weights = dict(zip(args.clip_models, args.clip_model_weights))
 
         self.mse_loss  = torch.nn.MSELoss()
 
@@ -301,7 +301,7 @@ class ZSSGAN(torch.nn.Module):
 
         self.auto_layer_k     = args.auto_layer_k
         self.auto_layer_iters = args.auto_layer_iters
-        
+
         if args.target_img_list is not None:
             self.set_img2img_direction()
 
@@ -339,11 +339,11 @@ class ZSSGAN(torch.nn.Module):
 
             w_loss = [self.clip_model_weights[model_name] * self.clip_loss_models[model_name].global_clip_loss(generated_from_w, self.target_class) for model_name in self.clip_model_weights.keys()]
             w_loss = torch.sum(torch.stack(w_loss))
-            
+
             w_optim.zero_grad()
             w_loss.backward()
             w_optim.step()
-        
+
         layer_weights = torch.abs(w_codes - initial_w_codes).mean(dim=-1).mean(dim=0)
         chosen_layer_idx = torch.topk(layer_weights, self.auto_layer_k)[1].cpu().numpy()
 
@@ -354,18 +354,7 @@ class ZSSGAN(torch.nn.Module):
 
         idx_to_layer = all_layers[2:4] + conv_layers # add initial convs to optimization
 
-        chosen_layers = [idx_to_layer[idx] for idx in chosen_layer_idx] 
-
-        # uncomment to add RGB layers to optimization.
-
-        # for idx in chosen_layer_idx:
-        #     if idx % 2 == 1 and idx >= 3 and idx < 14:
-        #         chosen_layers.append(rgb_layers[(idx - 3) // 2])
-
-        # uncomment to add learned constant to optimization
-        # chosen_layers.append(all_layers[1])
-                
-        return chosen_layers
+        return [idx_to_layer[idx] for idx in chosen_layer_idx]
 
     def forward(
         self,
@@ -390,18 +379,14 @@ class ZSSGAN(torch.nn.Module):
             self.generator_trainable.unfreeze_layers(train_layers)
 
         with torch.no_grad():
-            if input_is_latent:
-                w_styles = styles
-            else:
-                w_styles = self.generator_frozen.style(styles)
-            
+            w_styles = styles if input_is_latent else self.generator_frozen.style(styles)
             frozen_img = self.generator_frozen(w_styles, input_is_latent=True, truncation=truncation, randomize_noise=randomize_noise)[0]
 
             if self.args.sg3 or self.args.sgxl:
                 frozen_img = frozen_img + torch.randn_like(frozen_img) * 5e-4 # add random noise to add stochasticity in place of noise injections
 
         trainable_img = self.generator_trainable(w_styles, input_is_latent=True, truncation=truncation, randomize_noise=randomize_noise)[0]
-        
+
         clip_loss = torch.sum(torch.stack([self.clip_model_weights[model_name] * self.clip_loss_models[model_name](frozen_img, self.source_class, trainable_img, self.target_class) for model_name in self.clip_model_weights.keys()]))
 
         return [frozen_img, trainable_img], clip_loss
@@ -410,5 +395,5 @@ class ZSSGAN(torch.nn.Module):
         par_frozen = dict(self.generator_frozen.named_parameters())
         par_train  = dict(self.generator_trainable.named_parameters())
 
-        for k in par_frozen.keys():
+        for k in par_frozen:
             par_frozen[k] = par_train[k]
