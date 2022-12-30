@@ -11,11 +11,11 @@ from torchvision import utils
 from ZSSGAN.model.sg2_model import Generator, Discriminator
 
 def convert_modconv(vars, source_name, target_name, flip=False):
-    weight = vars[source_name + "/weight"].value().eval()
-    mod_weight = vars[source_name + "/mod_weight"].value().eval()
-    mod_bias = vars[source_name + "/mod_bias"].value().eval()
-    noise = vars[source_name + "/noise_strength"].value().eval()
-    bias = vars[source_name + "/bias"].value().eval()
+    weight = vars[f"{source_name}/weight"].value().eval()
+    mod_weight = vars[f"{source_name}/mod_weight"].value().eval()
+    mod_bias = vars[f"{source_name}/mod_bias"].value().eval()
+    noise = vars[f"{source_name}/noise_strength"].value().eval()
+    bias = vars[f"{source_name}/bias"].value().eval()
 
     dic = {
         "conv.weight": np.expand_dims(weight.transpose((3, 2, 0, 1)), 0),
@@ -25,42 +25,36 @@ def convert_modconv(vars, source_name, target_name, flip=False):
         "activate.bias": bias,
     }
 
-    dic_torch = {}
-
-    for k, v in dic.items():
-        dic_torch[target_name + "." + k] = torch.from_numpy(v)
-
+    dic_torch = {f"{target_name}.{k}": torch.from_numpy(v) for k, v in dic.items()}
     if flip:
-        dic_torch[target_name + ".conv.weight"] = torch.flip(
-            dic_torch[target_name + ".conv.weight"], [3, 4]
+        dic_torch[f"{target_name}.conv.weight"] = torch.flip(
+            dic_torch[f"{target_name}.conv.weight"], [3, 4]
         )
 
     return dic_torch
 
 
 def convert_conv(vars, source_name, target_name, bias=True, start=0):
-    weight = vars[source_name + "/weight"].value().eval()
+    weight = vars[f"{source_name}/weight"].value().eval()
 
     dic = {"weight": weight.transpose((3, 2, 0, 1))}
 
     if bias:
-        dic["bias"] = vars[source_name + "/bias"].value().eval()
+        dic["bias"] = vars[f"{source_name}/bias"].value().eval()
 
-    dic_torch = {}
-
-    dic_torch[target_name + f".{start}.weight"] = torch.from_numpy(dic["weight"])
+    dic_torch = {f"{target_name}.{start}.weight": torch.from_numpy(dic["weight"])}
 
     if bias:
-        dic_torch[target_name + f".{start + 1}.bias"] = torch.from_numpy(dic["bias"])
+        dic_torch[f"{target_name}.{start + 1}.bias"] = torch.from_numpy(dic["bias"])
 
     return dic_torch
 
 
 def convert_torgb(vars, source_name, target_name):
-    weight = vars[source_name + "/weight"].value().eval()
-    mod_weight = vars[source_name + "/mod_weight"].value().eval()
-    mod_bias = vars[source_name + "/mod_bias"].value().eval()
-    bias = vars[source_name + "/bias"].value().eval()
+    weight = vars[f"{source_name}/weight"].value().eval()
+    mod_weight = vars[f"{source_name}/mod_weight"].value().eval()
+    mod_bias = vars[f"{source_name}/mod_bias"].value().eval()
+    bias = vars[f"{source_name}/bias"].value().eval()
 
     dic = {
         "conv.weight": np.expand_dims(weight.transpose((3, 2, 0, 1)), 0),
@@ -69,32 +63,22 @@ def convert_torgb(vars, source_name, target_name):
         "bias": bias.reshape((1, 3, 1, 1)),
     }
 
-    dic_torch = {}
-
-    for k, v in dic.items():
-        dic_torch[target_name + "." + k] = torch.from_numpy(v)
-
-    return dic_torch
+    return {f"{target_name}.{k}": torch.from_numpy(v) for k, v in dic.items()}
 
 
 def convert_dense(vars, source_name, target_name):
-    weight = vars[source_name + "/weight"].value().eval()
-    bias = vars[source_name + "/bias"].value().eval()
+    weight = vars[f"{source_name}/weight"].value().eval()
+    bias = vars[f"{source_name}/bias"].value().eval()
 
     dic = {"weight": weight.transpose((1, 0)), "bias": bias}
 
-    dic_torch = {}
-
-    for k, v in dic.items():
-        dic_torch[target_name + "." + k] = torch.from_numpy(v)
-
-    return dic_torch
+    return {f"{target_name}.{k}": torch.from_numpy(v) for k, v in dic.items()}
 
 
 def update(state_dict, new):
     for k, v in new.items():
         if k not in state_dict:
-            raise KeyError(k + " is not found")
+            raise KeyError(f"{k} is not found")
 
         if v.shape != state_dict[k].shape:
             raise ValueError(f"Shape mismatch: {v.shape} vs {state_dict[k].shape}")
@@ -107,9 +91,7 @@ def discriminator_fill_statedict(statedict, vars, size):
 
     update(statedict, convert_conv(vars, f"{size}x{size}/FromRGB", "convs.0"))
 
-    conv_i = 1
-
-    for i in range(log_size - 2, 0, -1):
+    for conv_i, i in enumerate(range(log_size - 2, 0, -1), start=1):
         reso = 4 * 2 ** i
         update(
             statedict,
@@ -127,11 +109,9 @@ def discriminator_fill_statedict(statedict, vars, size):
                 vars, f"{reso}x{reso}/Skip", f"convs.{conv_i}.skip", start=1, bias=False
             ),
         )
-        conv_i += 1
-
-    update(statedict, convert_conv(vars, f"4x4/Conv", "final_conv"))
-    update(statedict, convert_dense(vars, f"4x4/Dense0", "final_linear.0"))
-    update(statedict, convert_dense(vars, f"Output", "final_linear.1"))
+    update(statedict, convert_conv(vars, "4x4/Conv", "final_conv"))
+    update(statedict, convert_dense(vars, "4x4/Dense0", "final_linear.0"))
+    update(statedict, convert_dense(vars, "Output", "final_linear.1"))
 
     return statedict
 
@@ -183,7 +163,7 @@ def fill_statedict(state_dict, vars, size, n_mlp):
         )
         conv_i += 2
 
-    for i in range(0, (log_size - 2) * 2 + 1):
+    for i in range((log_size - 2) * 2 + 1):
         update(
             state_dict,
             {
@@ -236,12 +216,10 @@ if __name__ == "__main__":
 
     size = g_ema.output_shape[2]
 
-    n_mlp = 0
     mapping_layers_names = g_ema.__getstate__()['components']['mapping'].list_layers()
-    for layer in mapping_layers_names:
-        if layer[0].startswith('Dense'):
-            n_mlp += 1
-
+    n_mlp = sum(
+        1 for layer in mapping_layers_names if layer[0].startswith('Dense')
+    )
     g = Generator(size, 512, n_mlp, channel_multiplier=args.channel_multiplier)
     state_dict = g.state_dict()
     state_dict = fill_statedict(state_dict, g_ema.vars, size, n_mlp)
@@ -265,7 +243,7 @@ if __name__ == "__main__":
         ckpt["d"] = d_state
 
     name = os.path.splitext(args.path)[0]
-    torch.save(ckpt, name + ".pt")
+    torch.save(ckpt, f"{name}.pt")
 
     batch_size = {256: 16, 512: 9, 1024: 4}
     n_sample = batch_size.get(size, 25)
@@ -296,5 +274,5 @@ if __name__ == "__main__":
     print(img_diff.abs().max())
 
     utils.save_image(
-        img_concat, name + ".png", nrow=n_sample, normalize=True, range=(-1, 1)
+        img_concat, f"{name}.png", nrow=n_sample, normalize=True, range=(-1, 1)
     )

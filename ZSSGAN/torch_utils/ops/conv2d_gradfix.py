@@ -48,9 +48,7 @@ def _should_use_custom_op(input):
     assert isinstance(input, torch.Tensor)
     if (not enabled) or (not torch.backends.cudnn.enabled):
         return False
-    if input.device.type != 'cuda':
-        return False
-    return True
+    return input.device.type == 'cuda'
 
 def _tuple_of_ints(xs, ndim):
     xs = tuple(xs) if isinstance(xs, (tuple, list)) else (xs,) * ndim
@@ -60,7 +58,7 @@ def _tuple_of_ints(xs, ndim):
 
 #----------------------------------------------------------------------------
 
-_conv2d_gradfix_cache = dict()
+_conv2d_gradfix_cache = {}
 _null_tensor = torch.empty([0])
 
 def _conv2d_gradfix(transpose, weight_shape, stride, padding, output_padding, dilation, groups):

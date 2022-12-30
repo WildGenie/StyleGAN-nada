@@ -30,7 +30,11 @@ from encoder4editing.models.psp import pSp
 from encoder4editing.utils.alignment import align_face
 from encoder4editing.utils.common import tensor2im
 
-model_list = ['base'] + [Path(model_ckpt).stem for model_ckpt in os.listdir("models") if not 'base' in model_ckpt]
+model_list = ['base'] + [
+    Path(model_ckpt).stem
+    for model_ckpt in os.listdir("models")
+    if 'base' not in model_ckpt
+]
 
 class Predictor(cog.Predictor):
     def setup(self):
@@ -58,14 +62,16 @@ class Predictor(cog.Predictor):
 
             self.generators[model] = g_ema
 
-        self.experiment_args = {"model_path": "e4e_ffhq_encode.pt"}
-        self.experiment_args["transform"] = transforms.Compose(
-            [
-                transforms.Resize((256, 256)),
-                transforms.ToTensor(),
-                transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
-            ]
-        )
+        self.experiment_args = {
+            "model_path": "e4e_ffhq_encode.pt",
+            "transform": transforms.Compose(
+                [
+                    transforms.Resize((256, 256)),
+                    transforms.ToTensor(),
+                    transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
+                ]
+            ),
+        }
         self.resize_dims = (256, 256)
 
         model_path = self.experiment_args["model_path"]
@@ -91,11 +97,7 @@ class Predictor(cog.Predictor):
         print("setup complete")
 
     @cog.input("input", type=Path, help="Input image")
-    @cog.input("output_style",
-               type=str,
-               help=f"Which output style do you want to use? Select 'all' to generate a collage.",
-               options=model_list + ['all'] + ['list - enter below'],
-               default='all')
+    @cog.input("output_style", type=str, help="Which output style do you want to use? Select 'all' to generate a collage.", options=model_list + ['all'] + ['list - enter below'], default='all')
     @cog.input("style_list", type=str, default='joker,anime,modigliani', help="Comma seperated list of models to use. Only accepts models from the output_style list. Will only be used if the chosen output_style is list")
     @cog.input("generate_video", type=bool, default=False, help="Generate a video instead of an output image. If more than one style is used, will interpolate between styles.")
     @cog.input("with_editing", type=bool, default=True, help="Apply latent space editing to the generated video")
@@ -122,7 +124,7 @@ class Predictor(cog.Predictor):
 
         # @title Align image
         input_image = self.run_alignment(str(input))
-        
+
         input_image = input_image.resize(self.resize_dims)
 
         img_transforms = self.experiment_args["transform"]
@@ -135,7 +137,7 @@ class Predictor(cog.Predictor):
         inverted_latent = latent.unsqueeze(0).unsqueeze(1)
         out_dir = Path(tempfile.mkdtemp())
         out_path = out_dir / "out.jpg"
-        
+
         generators = [self.generators[style] for style in styles]
 
         if not generate_video:
@@ -144,12 +146,12 @@ class Predictor(cog.Predictor):
                 for g_ema in generators:
                     img, _ = g_ema(inverted_latent, input_is_latent=True, truncation=1, randomize_noise=False)
                     img_list.append(img)
-                
+
                 out_img = torch.cat(img_list, axis=0)
                 utils.save_image(out_img, out_path, nrow=int(np.sqrt(out_img.size(0))), normalize=True, scale_each=True, range=(-1, 1))
 
             return Path(out_path)
-        
+
         return self.generate_vid(generators, inverted_latent, out_dir, video_format, with_editing)
 
     def generate_vid(self, generators, latent, out_dir, video_format, with_editing):      
@@ -179,7 +181,7 @@ class Predictor(cog.Predictor):
 
     def run_alignment(self, image_path):
         aligned_image = align_face(filepath=image_path, predictor=self.shape_predictor)
-        print("Aligned image has shape: {}".format(aligned_image.size))
+        print(f"Aligned image has shape: {aligned_image.size}")
         return aligned_image
 
     def run_on_batch(self, inputs):

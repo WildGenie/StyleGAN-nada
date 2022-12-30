@@ -101,7 +101,7 @@ def duplicate_latent(args, source_latent, alphas):
 
 def interpolate_with_boundaries(args, source_latent, alphas):
     edit_directions = args.edit_directions or ['pose', 'smile', 'gender', 'age', 'hair_length']
-    
+
     # interpolate latent codes with all targets
 
     print("Interpolating latent codes...")
@@ -113,13 +113,12 @@ def interpolate_with_boundaries(args, source_latent, alphas):
         distances = SUGGESTED_DISTANCES[direction_type]
         boundary = torch.load(os.path.join(boundary_dir, f'{direction_type}.pt')).cpu().detach().numpy()
 
-        for distance in distances:
-            if distance:
-                boundaries_and_distances.append((boundary, distance))
-
+        boundaries_and_distances.extend(
+            (boundary, distance) for distance in distances if distance
+        )
     latents = []
     for boundary, distance in boundaries_and_distances:
-        
+
         target_latent = project_code(source_latent, boundary, distance)
         latents.extend(interpolate_forward_backward(source_latent, target_latent, alphas)) 
 
@@ -161,31 +160,31 @@ def merge_videos(output_dir, num_subdirs):
 
     if num_subdirs == 1: # if we only have one video, just copy it over
         shutil.copy2(os.path.join(output_dir, str(0), "out.mp4"), output_file)
-    else:                # otherwise merge using ffmpeg
+    else:            # otherwise merge using ffmpeg
         command = ["ffmpeg"]
         for dir in range(num_subdirs):
             command.extend(['-i', os.path.join(output_dir, str(dir), "out.mp4")])
-        
+
         sqrt_subdirs = int(num_subdirs ** .5)
 
         if (sqrt_subdirs ** 2) != num_subdirs:
             raise ValueError("Number of checkpoints cannot be arranged in a square grid")
-        
+
         command.append("-filter_complex")
 
         filter_string = ""
         vstack_string = ""
         for row in range(sqrt_subdirs):
-            row_str = ""
-            for col in range(sqrt_subdirs):
-                row_str += f"[{row * sqrt_subdirs + col}:v]"
-
+            row_str = "".join(
+                f"[{row * sqrt_subdirs + col}:v]"
+                for col in range(sqrt_subdirs)
+            )
             letter = chr(ord('A')+row)
             row_str += f"hstack=inputs={sqrt_subdirs}[{letter}];"
             vstack_string += f"[{letter}]"
 
             filter_string += row_str
-        
+
         vstack_string += f"vstack=inputs={sqrt_subdirs}[out]"
         filter_string += vstack_string
 

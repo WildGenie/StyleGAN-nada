@@ -6,8 +6,7 @@ def parse_args():
     parser.add_argument('--gen_folder', help="Generated image folder.", required=True)
     parser.add_argument('--data_folder', help="Real data folder.", required=True)
     parser.add_argument('--use_kid', help="Use KID instead of FID", action="store_true")
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ multiple processes and devices. The interface is designed to minimize
 synchronization overhead as well as the amount of boilerplate in user
 code."""
 
+
 import re
 import numpy as np
 import torch
@@ -26,8 +27,8 @@ _counter_dtype  = torch.float64 # Data type to use for the internal counters.
 _rank           = 0             # Rank of the current process.
 _sync_device    = None          # Device to use for multiprocess communication. None = single-process.
 _sync_called    = False         # Has _sync() been called yet?
-_counters       = dict()        # Running counters on each device, updated by report(): name => device => torch.Tensor
-_cumulative     = dict()        # Cumulative counters on the CPU, updated by _sync(): name => torch.Tensor
+_counters = {}
+_cumulative = {}
 
 #----------------------------------------------------------------------------
 
@@ -77,7 +78,7 @@ def report(name, value):
         The same `value` that was passed in.
     """
     if name not in _counters:
-        _counters[name] = dict()
+        _counters[name] = {}
 
     elems = torch.as_tensor(value)
     if elems.numel() == 0:
@@ -133,8 +134,8 @@ class Collector:
     def __init__(self, regex='.*', keep_previous=True):
         self._regex = re.compile(regex)
         self._keep_previous = keep_previous
-        self._cumulative = dict()
-        self._moments = dict()
+        self._cumulative = {}
+        self._moments = {}
         self.update()
         self._moments.clear()
 
@@ -191,9 +192,7 @@ class Collector:
         no scalars were collected.
         """
         delta = self._get_delta(name)
-        if int(delta[0]) == 0:
-            return float('nan')
-        return float(delta[1] / delta[0])
+        return float('nan') if int(delta[0]) == 0 else float(delta[1] / delta[0])
 
     def std(self, name):
         r"""Returns the standard deviation of the scalars that were

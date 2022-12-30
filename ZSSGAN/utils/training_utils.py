@@ -6,9 +6,7 @@ def make_noise(batch, latent_dim, n_noise, device):
     if n_noise == 1:
         return torch.randn(batch, latent_dim, device=device)
 
-    noises = torch.randn(n_noise, batch, latent_dim, device=device).unbind(0)
-
-    return noises
+    return torch.randn(n_noise, batch, latent_dim, device=device).unbind(0)
 
 
 def mixing_noise(batch, latent_dim, prob, device):

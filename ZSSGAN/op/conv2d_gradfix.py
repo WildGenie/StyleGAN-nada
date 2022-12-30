@@ -98,7 +98,7 @@ def ensure_tuple(xs, ndim):
     return xs
 
 
-conv2d_gradfix_cache = dict()
+conv2d_gradfix_cache = {}
 
 
 def conv2d_gradfix(
@@ -131,21 +131,24 @@ def conv2d_gradfix(
             for i in range(ndim)
         ]
 
+
+
     class Conv2d(autograd.Function):
         @staticmethod
         def forward(ctx, input, weight, bias):
-            if not transpose:
-                out = F.conv2d(input=input, weight=weight, bias=bias, **common_kwargs)
-
-            else:
-                out = F.conv_transpose2d(
+            out = (
+                F.conv_transpose2d(
                     input=input,
                     weight=weight,
                     bias=bias,
                     output_padding=output_padding,
                     **common_kwargs,
                 )
-
+                if transpose
+                else F.conv2d(
+                    input=input, weight=weight, bias=bias, **common_kwargs
+                )
+            )
             ctx.save_for_backward(input, weight)
 
             return out
@@ -174,13 +177,16 @@ def conv2d_gradfix(
 
             return grad_input, grad_weight, grad_bias
 
+
+
+
     class Conv2dGradWeight(autograd.Function):
         @staticmethod
         def forward(ctx, grad_output, input):
             op = torch._C._jit_get_operation(
-                "aten::cudnn_convolution_backward_weight"
-                if not transpose
-                else "aten::cudnn_convolution_transpose_backward_weight"
+                "aten::cudnn_convolution_transpose_backward_weight"
+                if transpose
+                else "aten::cudnn_convolution_backward_weight"
             )
             flags = [
                 torch.backends.cudnn.benchmark,
@@ -221,6 +227,7 @@ def conv2d_gradfix(
                 ).apply(grad_output, grad_grad_weight, None)
 
             return grad_grad_output, grad_grad_input
+
 
     conv2d_gradfix_cache[key] = Conv2d
 

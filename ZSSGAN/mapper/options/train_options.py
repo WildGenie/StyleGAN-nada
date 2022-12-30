@@ -46,5 +46,4 @@ class TrainOptions:
 
 
 	def parse(self):
-		opts = self.parser.parse_args()
-		return opts
+		return self.parser.parse_args()

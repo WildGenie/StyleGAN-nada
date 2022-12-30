@@ -8,6 +8,6 @@ def aggregate_loss_dict(agg_loss_dict):
 		if len(mean_vals[key]) > 0:
 			mean_vals[key] = sum(mean_vals[key]) / len(mean_vals[key])
 		else:
-			print('{} has no value'.format(key))
+			print(f'{key} has no value')
 			mean_vals[key] = 0
 	return mean_vals

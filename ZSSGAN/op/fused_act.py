@@ -35,12 +35,7 @@ class FusedLeakyReLUFunctionBackward(Function):
         if grad_input.ndim > 2:
             dim += list(range(2, grad_input.ndim))
 
-        if bias:
-            grad_bias = grad_input.sum(dim).detach()
-
-        else:
-            grad_bias = empty
-
+        grad_bias = grad_input.sum(dim).detach() if bias else empty
         return grad_input, grad_bias
 
     @staticmethod
@@ -88,12 +83,7 @@ class FusedLeakyReLU(nn.Module):
     def __init__(self, channel, bias=True, negative_slope=0.2, scale=2 ** 0.5):
         super().__init__()
 
-        if bias:
-            self.bias = nn.Parameter(torch.zeros(channel))
-
-        else:
-            self.bias = None
-
+        self.bias = nn.Parameter(torch.zeros(channel)) if bias else None
         self.negative_slope = negative_slope
         self.scale = scale
 
@@ -102,18 +92,15 @@ class FusedLeakyReLU(nn.Module):
 
 
 def fused_leaky_relu(input, bias=None, negative_slope=0.2, scale=2 ** 0.5):
-    if input.device.type == "cpu":
-        if bias is not None:
-            rest_dim = [1] * (input.ndim - bias.ndim - 1)
-            return (
-                F.leaky_relu(
-                    input + bias.view(1, bias.shape[0], *rest_dim), negative_slope=0.2
-                )
-                * scale
-            )
-
-        else:
-            return F.leaky_relu(input, negative_slope=0.2) * scale
-
-    else:
+    if input.device.type != "cpu":
         return FusedLeakyReLUFunction.apply(input, bias, negative_slope, scale)
+    if bias is None:
+        return F.leaky_relu(input, negative_slope=0.2) * scale
+
+    rest_dim = [1] * (input.ndim - bias.ndim - 1)
+    return (
+        F.leaky_relu(
+            input + bias.view(1, bias.shape[0], *rest_dim), negative_slope=0.2
+        )
+        * scale
+    )

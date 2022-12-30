@@ -54,7 +54,7 @@ def _get_mangled_gpu_name():
 #----------------------------------------------------------------------------
 # Main entry point for compiling and loading C++/CUDA plugins.
 
-_cached_plugins = dict()
+_cached_plugins = {}
 
 def get_plugin(module_name, sources, headers=None, source_dir=None, **build_kwargs):
     assert verbosity in ['none', 'brief', 'full']
@@ -82,7 +82,7 @@ def get_plugin(module_name, sources, headers=None, source_dir=None, **build_kwar
             compiler_bindir = _find_compiler_bindir()
             if compiler_bindir is None:
                 raise RuntimeError(f'Could not find MSVC/GCC/CLANG installation on this computer. Check _find_compiler_bindir() in "{__file__}".')
-            os.environ['PATH'] += ';' + compiler_bindir
+            os.environ['PATH'] += f';{compiler_bindir}'
 
         # Some containers set TORCH_CUDA_ARCH_LIST to a list that can either
         # break the build or unnecessarily restrict what's available to nvcc.
@@ -105,7 +105,7 @@ def get_plugin(module_name, sources, headers=None, source_dir=None, **build_kwar
         # around the *.cu dependency bug in ninja config.
         #
         all_source_files = sorted(sources + headers)
-        all_source_dirs = set(os.path.dirname(fname) for fname in all_source_files)
+        all_source_dirs = {os.path.dirname(fname) for fname in all_source_files}
         if len(all_source_dirs) == 1: # and ('TORCH_EXTENSIONS_DIR' in os.environ):
 
             # Compute combined hash digest for all source files.
